@@ -7,9 +7,9 @@ export const dynamic = "force-dynamic";
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = params;
+  const { id } = await params;
   const idempotencyKey = req.headers.get("idempotency-key");
 
   // Idempotency check
