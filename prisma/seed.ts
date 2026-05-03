@@ -19,7 +19,7 @@ const regularProducts = [
     name: "BP Monitor", brand: "Omron", category: "Healthcare", price: 1899,
     size: "Standard cuff (22–32 cm)", colors: [], boxContents: "BP Monitor unit, arm cuff, 4× AA batteries, carry pouch, instruction manual",
     description: "Automatic upper-arm blood pressure monitor with irregular heartbeat detection. Large LCD display. Stores 60 readings per user.",
-    image: u("photo-1631549916768-4119b2e5f926"),
+    image: u("photo-i1iqQRLULlg"),
     images: [u("photo-i1iqQRLULlg"), u("photo-Nck9VXGDppA"), u("photo-3hTQWOv0yjQ")],
   },
   {
