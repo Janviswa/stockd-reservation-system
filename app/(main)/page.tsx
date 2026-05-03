@@ -83,9 +83,9 @@ export default function HomePage() {
 
             <motion.h1 initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
               className="text-5xl font-extrabold tracking-tight leading-[1.1] sm:text-6xl">
-              Your cart.
+              Reserve it.
               <span className="block bg-gradient-to-r from-indigo-400 to-violet-400 bg-clip-text text-transparent">
-                Actually saved.
+                 Before someone else does.
               </span>
             </motion.h1>
 
