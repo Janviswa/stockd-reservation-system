@@ -2,14 +2,14 @@
 
 > Production-grade multi-warehouse inventory reservation with race condition prevention, geo-aware routing, and a live concurrency demo.
 
-![Next.js](https://img.shields.io/badge/Next.js-15-black?logo=next.js)
-![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Neon-4169e1?logo=postgresql)
-![Redis](https://img.shields.io/badge/Redis-Upstash-dc382d?logo=redis)
-![Deployed](https://img.shields.io/badge/Deployed-Vercel-black?logo=vercel)
+[![Next.js](https://img.shields.io/badge/Next.js-15-black?logo=next.js)](https://nextjs.org)
+[![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript)](https://www.typescriptlang.org)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Neon-4169e1?logo=postgresql)](https://neon.tech)
+[![Redis](https://img.shields.io/badge/Redis-Upstash-dc382d?logo=redis)](https://upstash.com)
+[![Deployed](https://img.shields.io/badge/Deployed-Vercel-black?logo=vercel)](https://vercel.com)
 
-**Live URL:** `https://your-deployment.vercel.app` *(replace after deployment)*  
-**GitHub:** `https://github.com/your-username/stockd` *(replace with your repo)*
+**🌐 Live Demo:** [stockd-reservation-system.vercel.app](https://stockd-reservation-system.vercel.app)
+**▶️ Video Walkthrough:** [Watch on YouTube](https://youtube.com/your-video-link)
 
 ---
 
