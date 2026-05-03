@@ -1,26 +1,33 @@
-# Stockd — Inventory Reservation System
+# Stockd — Reservation System
 
-A production-quality inventory reservation system for multi-warehouse e-commerce, built to prevent race conditions during checkout.
+> Production-grade multi-warehouse inventory reservation with race condition prevention, geo-aware routing, and a live concurrency demo.
 
-## Live Demo
+![Next.js](https://img.shields.io/badge/Next.js-15-black?logo=next.js)
+![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Neon-4169e1?logo=postgresql)
+![Redis](https://img.shields.io/badge/Redis-Upstash-dc382d?logo=redis)
+![Deployed](https://img.shields.io/badge/Deployed-Vercel-black?logo=vercel)
 
-Deploy to Vercel (see Deployment section below).
+**Live URL:** `https://your-deployment.vercel.app` *(replace after deployment)*  
+**GitHub:** `https://github.com/your-username/stockd` *(replace with your repo)*
 
 ---
 
 ## Stack
 
-- **Next.js 15** (App Router, TypeScript strict)
-- **Prisma ORM** + **PostgreSQL** (Neon)
-- **Upstash Redis** (idempotency key storage)
-- **Tailwind CSS** + **shadcn/ui**
-- **Framer Motion** (animations)
-- **TanStack Query** (data fetching & auto-refresh)
-- **Zod** (schema validation)
+| Layer | Technology |
+|-------|-----------|
+| Framework | Next.js 15 (App Router, TypeScript strict) |
+| Database | PostgreSQL via Neon + Prisma ORM |
+| Cache / Idempotency | Upstash Redis |
+| Styling | Tailwind CSS + shadcn/ui + Framer Motion |
+| Data Fetching | TanStack Query (auto-refresh) |
+| Validation | Zod |
+| Deployment | Vercel (app + cron) |
 
 ---
 
-## Local Setup
+## Running Locally
 
 ### 1. Clone & Install
 
@@ -32,178 +39,232 @@ npm install
 
 ### 2. Environment Variables
 
-Copy `.env.local` (already included) or create your own:
+Create a `.env.local` file in the project root:
 
 ```env
-DATABASE_URL="postgresql://..."
-UPSTASH_REDIS_REST_URL="https://..."
-UPSTASH_REDIS_REST_TOKEN="..."
+# Neon (or any hosted Postgres — not SQLite, not local)
+DATABASE_URL="postgresql://user:password@host/dbname?sslmode=require"
+
+# Upstash Redis (for idempotency key storage)
+UPSTASH_REDIS_REST_URL="https://your-redis.upstash.io"
+UPSTASH_REDIS_REST_TOKEN="your-token"
+
+# Public base URL (used for internal API calls)
 NEXT_PUBLIC_BASE_URL="http://localhost:3000"
+
+# Secret for the cron endpoint — any random string
 CRON_SECRET="your-cron-secret"
 ```
 
-### 3. Run Migrations & Seed
+> **Getting free credentials:**
+> - Postgres: [neon.tech](https://neon.tech) → new project → copy the connection string
+> - Redis: [upstash.com](https://upstash.com) → new Redis database → copy REST URL + token
+
+### 3. Migrate & Seed
 
 ```bash
-# Push schema to DB
+# Push the Prisma schema to your database
 npx prisma db push
 
-# Seed with 25 products, 5 warehouses, 125 inventory records
+# Seed: 5 warehouses, 25 products, 125 inventory records
 npm run db:seed
 ```
 
-### 4. Start Dev Server
+### 4. Start the Dev Server
 
 ```bash
 npm run dev
 ```
 
-Visit `http://localhost:3000`
+Open [http://localhost:3000](http://localhost:3000).
+
+### Available npm Scripts
+
+```bash
+npm run dev          # Development server
+npm run build        # Production build
+npm run db:generate  # Regenerate Prisma client
+npm run db:push      # Push schema changes (no migration file)
+npm run db:migrate   # Apply migration files (production)
+npm run db:seed      # Seed database
+```
 
 ---
 
-## API Endpoints
+## API Reference
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/products` | All products with warehouse-wise available stock |
-| GET | `/api/warehouses` | All warehouses |
-| POST | `/api/reservations` | Create a reservation (409 if out of stock) |
-| GET | `/api/reservations/:id` | Fetch a reservation (lazy expiry) |
-| GET | `/api/reservations` | All reservations (with lazy expiry cleanup) |
-| POST | `/api/reservations/:id/confirm` | Confirm reservation (410 if expired) |
-| POST | `/api/reservations/:id/release` | Release reservation early |
-| GET | `/api/cron/expire` | Cron job to clean expired reservations |
+| Method | Path | Behaviour |
+|--------|------|-----------|
+| `GET` | `/api/products` | List all products with available stock per warehouse |
+| `GET` | `/api/warehouses` | List all warehouses |
+| `POST` | `/api/reservations` | Reserve units — returns `409` if insufficient stock |
+| `GET` | `/api/reservations/:id` | Fetch a reservation (applies lazy expiry on read) |
+| `POST` | `/api/reservations/:id/confirm` | Confirm reservation — returns `410` if expired |
+| `POST` | `/api/reservations/:id/release` | Release reservation early (user cancelled) |
+| `GET` | `/api/cron/expire` | Background cleanup (called by Vercel Cron) |
+
+All write endpoints accept and return `application/json`. The reserve and confirm endpoints additionally support an `Idempotency-Key` request header (see [Idempotency](#idempotency) below).
 
 ---
 
 ## How Concurrency Is Handled
 
-This is the core challenge: if two users simultaneously try to reserve the last unit, exactly one must succeed and the other must get a 409.
+The central challenge: if two users simultaneously try to reserve the last unit of a SKU, exactly one must succeed and the other must receive a `409`.
 
-### Solution: `SELECT FOR UPDATE` + Serializable Transaction
+### Mechanism: `SELECT FOR UPDATE` inside a Serializable Transaction
 
 ```sql
--- Step 1: Lock the inventory row (blocks other transactions)
+-- 1. Lock the inventory row — all other transactions block here
 SELECT id, "totalStock", "reservedStock"
 FROM inventory
-WHERE "productId" = $1 AND "warehouseId" = $2
+WHERE "productId" = $productId AND "warehouseId" = $warehouseId
 FOR UPDATE;
 
--- Step 2: Check available stock
--- available = totalStock - reservedStock
+-- 2. Compute available stock
+--    available = totalStock - reservedStock
 
--- Step 3: If enough stock, increment reservedStock atomically
+-- 3. Reject if insufficient
+--    → throw INSUFFICIENT_STOCK → HTTP 409
+
+-- 4. Atomically increment reservedStock
 UPDATE inventory
 SET "reservedStock" = "reservedStock" + $quantity
-WHERE "productId" = $1 AND "warehouseId" = $2;
+WHERE "productId" = $productId AND "warehouseId" = $warehouseId;
 
--- Step 4: Create reservation record
-INSERT INTO reservations ...
+-- 5. Create the reservation record
+INSERT INTO reservations (...) VALUES (...);
 ```
 
-The entire operation runs inside a `Prisma.$transaction` with `isolationLevel: Serializable`. PostgreSQL's `FOR UPDATE` causes the second concurrent request to **wait** until the first transaction commits. After the first commits, the second reads the updated `reservedStock`, sees insufficient stock, and throws `INSUFFICIENT_STOCK` → HTTP 409.
+This runs inside `prisma.$transaction({ isolationLevel: Serializable })`. PostgreSQL's row-level lock (`FOR UPDATE`) causes the second concurrent request to **block** until the first transaction commits. Once released, the second reads the updated `reservedStock`, sees no stock remaining, and returns `409` — **exactly-once-succeeds** semantics with no application-level locking required.
 
-This guarantees **exactly-one-succeeds** semantics.
+### Reservation Lifecycle
+
+```
+POST /api/reservations
+  └─ PENDING  (inventory.reservedStock += quantity)
+       │
+       ├── POST /confirm → CONFIRMED  (totalStock -= quantity, reservedStock -= quantity)
+       ├── POST /release → RELEASED   (reservedStock -= quantity)
+       └── Expiry        → RELEASED   (reservedStock -= quantity)  ← automatic
+
+Available stock = totalStock − reservedStock  (at all times)
+```
 
 ---
 
-## Reservation Lifecycle
+## Expiry Mechanism in Production
 
-```
-Reserve → PENDING (stock.reservedStock++)
-    ↓
-    ├─ Confirm → CONFIRMED (stock.totalStock--, stock.reservedStock--)
-    ├─ Release → RELEASED (stock.reservedStock--)
-    └─ Expire  → RELEASED (stock.reservedStock--) ← automatic
-```
+Expired reservations must release their held stock so other shoppers can buy. Two complementary strategies are used:
 
-**Available stock = totalStock − reservedStock** at all times.
+### 1. Lazy Expiry (immediate, on read)
 
----
+Every time a reservation is fetched — via `GET /api/reservations/:id` or the full list endpoint — the server checks `expiresAt < now()`. If the reservation is still `PENDING` and has expired, it atomically:
 
-## Expiry Strategy
-
-Two complementary mechanisms:
-
-### 1. Lazy Expiration (on read)
-Every time a reservation is fetched (GET `/api/reservations/:id` or GET `/api/reservations`), the server checks if `expiresAt < now`. If expired and still PENDING, it atomically:
 - Sets `status = RELEASED`
-- Decrements `reservedStock`
+- Decrements `reservedStock` on the inventory row
 
-This means no reservation stays "phantom-reserved" after expiry — the moment anyone reads it, it self-heals.
+This means any expired reservation self-heals the moment it is touched, with no lag. Stock becomes available again instantly on the next product listing refresh.
 
-### 2. Cron Job (background cleanup)
-`GET /api/cron/expire` runs every 5 minutes via Vercel Cron (`vercel.json`). It finds all PENDING reservations where `expiresAt < now` and releases them. This ensures stock is freed even if nobody reads the reservation.
+### 2. Vercel Cron Job (background sweep)
 
-**Why both?** Lazy expiry provides instant correctness on read. The cron job handles orphaned reservations that nobody ever reads again.
+`/api/cron/expire` runs every **5 minutes** via Vercel Cron (configured in `vercel.json`):
+
+```json
+{
+  "crons": [{ "path": "/api/cron/expire", "schedule": "*/5 * * * *" }]
+}
+```
+
+The cron endpoint:
+1. Finds all `PENDING` reservations where `expiresAt < now()`
+2. Releases each one inside a transaction (idempotent — skips already-released rows)
+3. Writes a `EXPIRED` audit event to `reservation_events`
+4. Promotes the next waitlist entry for that product/warehouse if one exists
+
+The cron is protected by a `CRON_SECRET` checked via the `x-cron-secret` header.
+
+**Why both?** Lazy expiry gives instant correctness for any reservation that someone reads. The cron job handles orphaned reservations that nobody ever reads again, ensuring stock is never permanently phantom-held.
 
 ---
 
 ## Idempotency (Bonus)
 
-The `POST /api/reservations` and `POST /api/reservations/:id/confirm` endpoints support an `Idempotency-Key` header.
+`POST /api/reservations` and `POST /api/reservations/:id/confirm` support the `Idempotency-Key` request header.
 
-If a client retries with the same key:
-1. The server checks Redis for `idempotency:{key}`
-2. If found, returns the **original cached response** without re-executing
-3. If not found, executes normally and stores the response in Redis with a 24h TTL
+**How it works:**
 
-This prevents double-reservations from network retries.
+1. Client sends any unique string in the `Idempotency-Key` header (e.g., a UUID generated client-side before the request).
+2. On first call: the server executes normally and stores the response in Redis under `idempotency:{key}` with a 24-hour TTL.
+3. On retry with the same key: the cached response is returned immediately without re-executing the transaction — no double-reserve, no double-confirm.
 
 ```bash
-# Example
-curl -X POST /api/reservations \
-  -H "Idempotency-Key: unique-client-request-id-123" \
+# First call — creates reservation
+curl -X POST http://localhost:3000/api/reservations \
   -H "Content-Type: application/json" \
+  -H "Idempotency-Key: req_abc123" \
+  -d '{"productId": "...", "warehouseId": "...", "quantity": 1}'
+
+# Retry (e.g., after a network timeout) — returns cached response
+curl -X POST http://localhost:3000/api/reservations \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: req_abc123" \
   -d '{"productId": "...", "warehouseId": "...", "quantity": 1}'
 ```
+
+Both calls return the same reservation object. The database is only written once.
 
 ---
 
 ## Seed Data
 
-- **5 Warehouses**: Chennai, Bangalore, Mumbai, Delhi, Hyderabad
-- **25 Products**: 5 per category (Healthcare, Skincare, Fitness, Electronics, Lifestyle)
-- **125 Inventory records**: Every product × every warehouse, random 5–20 units each
+| Entity | Count | Detail |
+|--------|-------|--------|
+| Warehouses | 5 | Chennai, Bangalore, Mumbai, Delhi, Hyderabad |
+| Products | 53 | Healthcare (10), Skincare (11), Fitness (11), Electronics (11), Lifestyle (10) |
+| Inventory records | 265 | Every product × every warehouse, 10 units each |
 
 ---
 
-## Deployment
+## Deployment (Vercel + Neon + Upstash)
 
-### Vercel + Neon + Upstash
-
-1. Push to GitHub
-2. Import to Vercel
-3. Add environment variables in Vercel dashboard
-4. Deploy
-5. Run seed: `npx prisma db push && npm run db:seed`
-
-The `vercel.json` cron runs `/api/cron/expire` every 5 minutes automatically.
+1. Push to a public GitHub repository.
+2. Import the repo at [vercel.com/new](https://vercel.com/new).
+3. Add all environment variables from the [Local Setup](#2-environment-variables) section in the Vercel dashboard.
+4. Deploy. Vercel will run `npm run postinstall` (which regenerates the Prisma client) automatically.
+5. After the first successful deploy, seed the production database:
+   ```bash
+   DATABASE_URL="<your-neon-url>" npm run db:seed
+   ```
+6. The cron job at `/api/cron/expire` will start running automatically every 5 minutes.
 
 ---
 
 ## Trade-offs & What I'd Do Differently
 
-### Trade-offs made
+### Trade-offs Made
 
-1. **Serializable transactions vs advisory locks**: I chose Prisma's `$transaction` with `FOR UPDATE` + Serializable isolation. An alternative is Redis distributed locks (Redlock), which would work across multiple DB replicas but adds complexity. For a Neon-hosted single-primary Postgres, `FOR UPDATE` is simpler and correct.
+**`SELECT FOR UPDATE` vs. Redis distributed locks (Redlock)**  
+`FOR UPDATE` inside a Serializable Postgres transaction is simpler and correct for a single-primary database (Neon). Redlock would be needed if writes were spread across multiple DB replicas, but that adds operational complexity that isn't warranted here.
 
-2. **No user auth**: Reservations are not tied to a user session. In production, you'd have a `userId` on the Reservation model and only show the user their own reservations.
+**No user authentication**  
+Reservations are anonymous — not tied to a session or user ID. In production, you'd add a `userId` foreign key on the `Reservation` model, ensure users can only view and act on their own reservations, and protect the checkout page behind auth.
 
-3. **Quantity always 1**: The UI reserves 1 unit at a time. The API supports arbitrary quantities — just wire up a quantity selector.
+**Cron cadence of 5 minutes**  
+Expired reservations may hold stock for up to 5 minutes beyond their `expiresAt`. Lazy expiry on read compensates for this in most cases, but a high-traffic system should reduce the cron to 1 minute or replace it with a job queue (BullMQ / Inngest) that schedules a release task at exact expiry time.
 
-4. **Cron every 5 minutes**: Expired reservations may hold stock for up to 5 minutes beyond expiry. For high-traffic scenarios, reduce to 1 minute or use a background job queue (BullMQ, etc.).
+**Quantity hardcoded to 1 in the UI**  
+The API fully supports arbitrary quantities (`quantity` is validated by Zod). The product detail page always reserves 1 unit. A quantity selector was intentionally left out to keep the UI focused.
 
-5. **No optimistic locking**: Stock counts shown in the UI may be slightly stale (30s refetch interval). In production, use WebSockets or SSE for real-time updates.
+**Stale stock counts in the UI**  
+TanStack Query re-fetches every 30 seconds. For a truly live experience, stock levels should be pushed via WebSockets or Server-Sent Events rather than polled.
 
-### With more time
+### With More Time
 
-- Add user authentication (NextAuth)
-- WebSocket/SSE for live stock updates
-- Payment flow integration (Razorpay/Stripe)
-- Quantity selector in product detail
-- Order history with pagination
-- Admin dashboard for warehouse management
-- Unit + integration tests for the reservation logic
-- Rate limiting on the reservation endpoint
+- **User authentication** — NextAuth with Google/email, `userId` on reservations, protected checkout pages
+- **Real-time stock updates** — SSE or WebSockets so the product listing reflects reservations as they happen
+- **Payment integration** — Razorpay or Stripe webhook confirms the reservation server-side on payment success
+- **Quantity selector** — wire up the existing API `quantity` field to the frontend
+- **Rate limiting** — protect `POST /api/reservations` from spam with an IP-based rate limiter (e.g., `@upstash/ratelimit`)
+- **Tests** — integration tests for the concurrent-reservation path using `pg` with parallel transactions; unit tests for the expiry logic
+- **Order history** — paginated list of a user's past reservations and orders
+- **Admin tooling** — warehouse stock adjustment, manual reservation release, analytics on conversion rate from reservation → confirmation
