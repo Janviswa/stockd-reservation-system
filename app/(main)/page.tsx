@@ -4,7 +4,6 @@ import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { Heart, Sparkles, Dumbbell, Cpu, Coffee, ArrowRight, Shield, Clock, Zap, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Footer } from "@/components/Footer";
 
 async function fetchProducts() {
   const res = await fetch("/api/products");
@@ -51,7 +50,12 @@ export default function HomePage() {
     for (const name of names) {
       const p = (products as { name: string; images?: string[]; image?: string }[])
         .find(pr => pr.name === name);
-      const src = p?.images?.[0] || p?.image || "";
+      // Try images[] first, then image field — both may be valid depending on seed state
+      const candidates = [
+        ...(Array.isArray(p?.images) ? p.images : []),
+        p?.image ?? "",
+      ].filter(s => typeof s === "string" && s.trim().length > 0);
+      const src = candidates[0] ?? "";
       if (src) imgs.push(src);
       if (imgs.length === 4) break;
     }
@@ -79,9 +83,9 @@ export default function HomePage() {
 
             <motion.h1 initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
               className="text-5xl font-extrabold tracking-tight leading-[1.1] sm:text-6xl">
-              Reserve it.
+              Your cart.
               <span className="block bg-gradient-to-r from-indigo-400 to-violet-400 bg-clip-text text-transparent">
-                Before someone else does.
+                Actually saved.
               </span>
             </motion.h1>
 
@@ -228,7 +232,6 @@ export default function HomePage() {
           </Button>
         </Link>
       </motion.section>
-      <Footer />
     </div>
   );
 }
