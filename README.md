@@ -268,3 +268,4 @@ TanStack Query re-fetches every 30 seconds. For a truly live experience, stock l
 - **Tests** — integration tests for the concurrent-reservation path using `pg` with parallel transactions; unit tests for the expiry logic
 - **Order history** — paginated list of a user's past reservations and orders
 - **Admin tooling** — warehouse stock adjustment, manual reservation release, analytics on conversion rate from reservation → confirmation
+
