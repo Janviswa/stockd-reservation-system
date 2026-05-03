@@ -13,6 +13,19 @@
 
 ---
 
+## 🔐 Admin Access
+
+The admin panel is at [`/admin`](https://stockd-reservation-system.vercel.app/admin) — use these to explore:
+
+| Field | Value |
+|-------|-------|
+| Email | `admin@stockd.com` |
+| Password | `admin123` |
+
+The panel includes a live dashboard, warehouse stock view, inventory management, event logs, and a concurrency race demo.
+
+---
+
 ## Stack
 
 | Layer | Technology |
@@ -268,4 +281,3 @@ TanStack Query re-fetches every 30 seconds. For a truly live experience, stock l
 - **Tests** — integration tests for the concurrent-reservation path using `pg` with parallel transactions; unit tests for the expiry logic
 - **Order history** — paginated list of a user's past reservations and orders
 - **Admin tooling** — warehouse stock adjustment, manual reservation release, analytics on conversion rate from reservation → confirmation
-
