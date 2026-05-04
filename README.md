@@ -9,7 +9,7 @@
 [![Deployed](https://img.shields.io/badge/Deployed-Vercel-black?logo=vercel)](https://vercel.com)
 
 **🌐 Live Demo:** [stockd-reservation-system.vercel.app](https://stockd-reservation-system.vercel.app)
-**▶️ Video Walkthrough:** [Watch on YouTube](https://youtube.com/your-video-link)
+**▶️ Video Walkthrough:** [Watch on YouTube](https://youtu.be/imwIA4FFaBE)
 
 ---
 
