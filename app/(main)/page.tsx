@@ -85,7 +85,7 @@ export default function HomePage() {
               className="text-5xl font-extrabold tracking-tight leading-[1.1] sm:text-6xl">
               Reserve it.
               <span className="block bg-gradient-to-r from-indigo-400 to-violet-400 bg-clip-text text-transparent">
-                 Before someone else does.
+                Before someone else does.
               </span>
             </motion.h1>
 
